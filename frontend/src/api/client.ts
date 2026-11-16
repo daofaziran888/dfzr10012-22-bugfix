@@ -19,3 +19,15 @@ export async function fetchJson<T>(path: string): Promise<T> {
   }
   return (await response.json()) as T
 }
+
+/** 读取后端 ActionResult/HTTPException 里的可读错误信息，失败时回退到默认文案。 */
+export async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const payload = await response.json()
+    if (typeof payload?.message === 'string' && payload.message) return payload.message
+    if (typeof payload?.detail === 'string' && payload.detail) return payload.detail
+  } catch {
+    // 响应体不是 JSON 时使用默认文案
+  }
+  return fallback
+}

@@ -11,6 +11,7 @@ import BackpressView from './views/backpress'
 import LatencyView from './views/latency'
 import JobopsView from './views/jobops'
 import SinkView from './views/sink'
+import SinkVersionsView from './views/sink/VersionsView'
 import SchemaView from './views/schema'
 import WatermarkView from './views/watermark'
 import ParallelView from './views/parallel'
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/backpress" element={<BackpressView />} />
           <Route path="/latency" element={<LatencyView />} />
           <Route path="/jobops" element={<JobopsView />} />
+          <Route path="/sink/versions" element={<SinkVersionsView />} />
           <Route path="/sink" element={<SinkView />} />
           <Route path="/schema" element={<SchemaView />} />
           <Route path="/watermark" element={<WatermarkView />} />

@@ -1,4 +1,9 @@
-"""流作业指标采集接口：维护指标采集器，覆盖启动采集、暂停采集、关闭采集等动作。"""
+"""流作业指标采集接口：维护指标采集器，覆盖启动采集、暂停采集、关闭采集等动作。
+
+另提供跨流程链路接口：
+- 写入结果上报：关闭回执与写入成功指标同时到达时，只认一份输出配置版本数据；
+- 关联输出快照：消费侧读取当前权威版本，失败时沿用上一份完整快照。
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -30,6 +35,46 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出流作业指标采集清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "metric", "total": total, "items": items}
+
+
+@router.get("/{entry_id}/sink-snapshot", response_model=dict)
+def get_sink_snapshot(entry_id: int) -> dict:
+    """消费侧读取关联输出配置的权威版本快照；版本缺失时沿用上一份完整快照。"""
+    if service.get_entry(entry_id) is None:
+        raise HTTPException(status_code=404, detail=f"指标采集器 {entry_id} 不存在或已归档")
+    snapshot = service.latest_sink_snapshot(entry_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="未找到关联的输出配置，无法提供版本快照")
+    return snapshot
+
+
+@router.post("/{entry_id}/write-results", response_model=ActionResult)
+def record_write_result(entry_id: int, payload: EntryPayload) -> ActionResult:
+    """上报一次写入结果并裁决：关闭终态下的成功写入被驳回且不累加成功次数。"""
+    values = payload.values or {}
+    entry, version, message = service.record_write_result(
+        entry_id,
+        sink_code=str(values.get("sink_code") or values.get("关联输出配置") or "").strip() or None,
+        batch_no=str(values.get("batch_no") or values.get("批次号") or "").strip() or None,
+    )
+    if entry is None:
+        return ActionResult(ok=False, message=message)
+    accepted = "驳回" not in message
+    return ActionResult(
+        ok=accepted,
+        message=message,
+        entry={
+            "采集器": entry,
+            "参考输出配置版本": version,
+        },
+    )
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条指标采集器明细；不存在时给出可读的错误说明。"""
@@ -56,10 +101,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出流作业指标采集清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "metric", "total": total, "items": items}
